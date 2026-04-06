@@ -1,0 +1,14 @@
+name: raa_app
+description: Road Alert Assistant
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  geolocator: ^10.1.0
+  flutter_tts: ^3.8.0
+
+flutter:
+  uses-material-design: true
