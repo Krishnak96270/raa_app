@@ -1,14 +1,34 @@
 name: raa_app
 description: Road Alert Assistant
 
+publish_to: 'none'
+
+version: 1.0.0+1
+
 environment:
   sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # GPS
   geolocator: ^10.1.0
+
+  # Voice alerts
   flutter_tts: ^3.8.0
+
+  # Database
+  sqflite: ^2.3.0
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
