@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as p;
 import 'dart:math';
 
 void main() {
@@ -39,7 +39,7 @@ class DBHelper {
   static Future<Database> getDB() async {
     if (_db != null) return _db!;
 
-    String path = join(await getDatabasesPath(), 'raa.db');
+    String path = p.join(await getDatabasesPath(), 'raa.db');
 
     _db = await openDatabase(path, version: 1, onCreate: (db, version) async {
       await db.execute(
@@ -78,7 +78,17 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    initLocation();
     loadData();
+  }
+
+  Future<void> initLocation() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      await Geolocator.requestPermission();
+    }
+
     startTracking();
   }
 
@@ -116,7 +126,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> addAlert(String type) async {
-    Position pos = await Geolocator.getCurrentPosition();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Enable GPS")));
+      return;
+    }
+
+    Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
 
     final db = await DBHelper.getDB();
     await db.insert('alerts',
@@ -221,7 +240,9 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
-          Text("Total Alerts: ${alerts.length}"),
+          SizedBox(height: 10),
+          Text("Total Alerts: ${alerts.length}",
+              style: TextStyle(fontSize: 18)),
           ElevatedButton(
               onPressed: showAddAlert, child: Text("Add Alert")),
           Expanded(
