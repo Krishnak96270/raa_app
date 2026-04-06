@@ -1,14 +1,11 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.raa_app">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- INTERNET -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
-    <!-- LOCATION PERMISSIONS -->
+    <!-- LOCATION -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-
-    <!-- For background alerts -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
 
     <application
