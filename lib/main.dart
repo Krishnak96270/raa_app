@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'dart:async';
 import 'dart:math';
 
 void main() {
@@ -42,23 +41,69 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    initLocation();
+  }
+
+  // Initialize permissions
+  Future<void> initLocation() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      await Geolocator.requestPermission();
+    }
+
     startTracking();
   }
 
+  // Add alert point
   Future<void> addPoint(String type) async {
-    Position pos = await Geolocator.getCurrentPosition();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
-    setState(() {
-      points.add(AlertPoint(pos.latitude, pos.longitude, type));
-    });
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Please enable GPS")),
+      );
+      return;
+    }
 
-    Navigator.pop(context);
+    LocationPermission permission = await Geolocator.checkPermission();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("$type added")),
-    );
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Location permission denied")),
+      );
+      return;
+    }
+
+    try {
+      Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        points.add(AlertPoint(pos.latitude, pos.longitude, type));
+      });
+
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              "$type saved at (${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})"),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error getting location")),
+      );
+    }
   }
 
+  // Distance calculation
   double distance(lat1, lon1, lat2, lon2) {
     const R = 6371000;
     double dLat = (lat2 - lat1) * pi / 180;
@@ -74,6 +119,7 @@ class _HomePageState extends State<HomePage> {
     return R * c;
   }
 
+  // Voice alert
   void speak(String text) async {
     if (!isMuted) {
       await tts.setVolume(1.0);
@@ -82,12 +128,11 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void startTracking() async {
-    await Geolocator.requestPermission();
-
+  // Background tracking
+  void startTracking() {
     Geolocator.getPositionStream(
       locationSettings: LocationSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: LocationAccuracy.best,
         distanceFilter: 5,
       ),
     ).listen((Position pos) {
@@ -101,6 +146,7 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  // Add dialog
   void showAddDialog() {
     showDialog(
       context: context,
@@ -124,6 +170,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Change distance
   void changeDistance() {
     showDialog(
       context: context,
@@ -132,7 +179,7 @@ class _HomePageState extends State<HomePage> {
             TextEditingController(text: alertDistance.toString());
 
         return AlertDialog(
-          title: Text("Set Alert Distance (meters)"),
+          title: Text("Set Distance (meters)"),
           content: TextField(
             controller: controller,
             keyboardType: TextInputType.number,
