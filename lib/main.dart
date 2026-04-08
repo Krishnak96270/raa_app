@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
+import 'package:sensors_plus/sensors_plus.dart';
 import 'dart:math';
 
 void main() {
@@ -16,13 +17,6 @@ class Alert {
   String type;
 
   Alert({this.id, required this.lat, required this.lon, required this.type});
-}
-
-class Category {
-  int? id;
-  String name;
-
-  Category({this.id, required this.name});
 }
 
 class AlertState {
@@ -42,12 +36,6 @@ class DBHelper {
     _db = await openDatabase(path, version: 1, onCreate: (db, version) async {
       await db.execute(
           'CREATE TABLE alerts(id INTEGER PRIMARY KEY AUTOINCREMENT, lat REAL, lon REAL, type TEXT)');
-      await db.execute(
-          'CREATE TABLE categories(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)');
-
-      await db.insert('categories', {'name': 'Speed Breaker'});
-      await db.insert('categories', {'name': 'Speed Camera'});
-      await db.insert('categories', {'name': 'Village'});
     });
 
     return _db!;
@@ -57,11 +45,7 @@ class DBHelper {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'RAA',
-      debugShowCheckedModeBanner: false,
-      home: HomePage(),
-    );
+    return MaterialApp(debugShowCheckedModeBanner: false, home: HomePage());
   }
 }
 
@@ -72,7 +56,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<Alert> alerts = [];
-  List<Category> categories = [];
   Map<int, AlertState> alertStates = {};
 
   FlutterTts tts = FlutterTts();
@@ -80,14 +63,18 @@ class _HomePageState extends State<HomePage> {
 
   double d1 = 60, d2 = 30, d3 = 10, resetDistance = 25;
 
-  // 🔇 DEFAULT MUTED
   bool isMuted = true;
+
+  // Motion detection
+  double threshold = 12.0;
+  DateTime lastDetection = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     initLocation();
     loadData();
+    startMotionDetection();
   }
 
   Future<void> initLocation() async {
@@ -97,12 +84,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> loadData() async {
     final db = await DBHelper.getDB();
-
-    final alertData = await db.query('alerts');
-    final catData = await db.query('categories');
+    final data = await db.query('alerts');
 
     setState(() {
-      alerts = alertData
+      alerts = data
           .map((e) => Alert(
               id: e['id'] as int,
               lat: e['lat'] as double,
@@ -110,47 +95,36 @@ class _HomePageState extends State<HomePage> {
               type: e['type'] as String))
           .toList();
 
-      categories = catData
-          .map((e) => Category(id: e['id'] as int, name: e['name'] as String))
-          .toList();
-
       for (var a in alerts) {
-        if (a.id != null) {
-          alertStates[a.id!] = AlertState();
-        }
+        alertStates[a.id!] = AlertState();
       }
     });
   }
 
-  Future<void> addAlert(String type) async {
-    Position pos = await Geolocator.getCurrentPosition();
-
+  Future<void> saveAlert(double lat, double lon) async {
     final db = await DBHelper.getDB();
-    await db.insert(
-        'alerts', {'lat': pos.latitude, 'lon': pos.longitude, 'type': type});
-
-    loadData();
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text("$type saved")));
-  }
-
-  Future<void> deleteAlert(int id) async {
-    final db = await DBHelper.getDB();
-    await db.delete('alerts', where: 'id=?', whereArgs: [id]);
+    await db.insert('alerts',
+        {'lat': lat, 'lon': lon, 'type': 'Speed Breaker'});
     loadData();
   }
 
-  Future<void> addCategory(String name) async {
-    final db = await DBHelper.getDB();
-    await db.insert('categories', {'name': name});
-    loadData();
-  }
+  void startMotionDetection() {
+    accelerometerEvents.listen((event) async {
+      double z = event.z;
 
-  Future<void> deleteCategory(int id) async {
-    final db = await DBHelper.getDB();
-    await db.delete('categories', where: 'id=?', whereArgs: [id]);
-    loadData();
+      if (z > threshold &&
+          DateTime.now().difference(lastDetection).inSeconds > 5) {
+        lastDetection = DateTime.now();
+
+        if (currentPosition != null) {
+          await saveAlert(
+              currentPosition!.latitude, currentPosition!.longitude);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Bump detected & saved")));
+        }
+      }
+    });
   }
 
   double distance(lat1, lon1, lat2, lon2) {
@@ -170,23 +144,17 @@ class _HomePageState extends State<HomePage> {
 
   void speak(String text) async {
     if (!isMuted) {
-      await tts.setSpeechRate(0.5);
       await tts.speak(text);
     }
   }
 
   void startTracking() {
-    Geolocator.getPositionStream(
-      locationSettings:
-          LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 5),
-    ).listen((pos) {
+    Geolocator.getPositionStream().listen((pos) {
       setState(() {
         currentPosition = pos;
       });
 
       for (var a in alerts) {
-        if (a.id == null) continue;
-
         double d = distance(pos.latitude, pos.longitude, a.lat, a.lon);
         var state = alertStates[a.id!] ?? AlertState();
 
@@ -214,26 +182,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void showAddAlert() {
-    showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-              title: Text("Select Category"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: categories
-                    .map((c) => ListTile(
-                          title: Text(c.name),
-                          onTap: () {
-                            addAlert(c.name);
-                            Navigator.pop(context);
-                          },
-                        ))
-                    .toList(),
-              ),
-            ));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -250,45 +198,16 @@ class _HomePageState extends State<HomePage> {
           )
         ],
       ),
-      body: Padding(
-        padding: EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Card(
-              child: Padding(
-                padding: EdgeInsets.all(12),
-                child: Text(
-                  currentPosition == null
-                      ? "Getting location..."
-                      : "Lat: ${currentPosition!.latitude.toStringAsFixed(5)}\nLon: ${currentPosition!.longitude.toStringAsFixed(5)}",
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-            ),
-            SizedBox(height: 10),
-            Text("Total Alerts: ${alerts.length}",
-                style: TextStyle(fontSize: 18)),
-            SizedBox(height: 10),
-            ElevatedButton(
-                onPressed: showAddAlert, child: Text("Add Alert")),
-            Expanded(
-              child: ListView.builder(
-                  itemCount: alerts.length,
-                  itemBuilder: (_, i) {
-                    var a = alerts[i];
-                    return Card(
-                      child: ListTile(
-                        title: Text("${i + 1}. ${a.type}"),
-                        subtitle: Text("${a.lat}, ${a.lon}"),
-                        trailing: IconButton(
-                            icon: Icon(Icons.delete),
-                            onPressed: () => deleteAlert(a.id!)),
-                      ),
-                    );
-                  }),
-            )
-          ],
-        ),
+      body: Column(
+        children: [
+          SizedBox(height: 10),
+          Text(
+            currentPosition == null
+                ? "Getting location..."
+                : "Lat: ${currentPosition!.latitude.toStringAsFixed(5)} | Lon: ${currentPosition!.longitude.toStringAsFixed(5)}",
+          ),
+          Text("Total Alerts: ${alerts.length}"),
+        ],
       ),
     );
   }
