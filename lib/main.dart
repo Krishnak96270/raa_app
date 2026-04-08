@@ -57,7 +57,11 @@ class DBHelper {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'RAA', home: HomePage());
+    return MaterialApp(
+      title: 'RAA',
+      debugShowCheckedModeBanner: false,
+      home: HomePage(),
+    );
   }
 }
 
@@ -75,7 +79,9 @@ class _HomePageState extends State<HomePage> {
   Position? currentPosition;
 
   double d1 = 60, d2 = 30, d3 = 10, resetDistance = 25;
-  bool isMuted = false;
+
+  // 🔇 DEFAULT MUTED
+  bool isMuted = true;
 
   @override
   void initState() {
@@ -124,6 +130,9 @@ class _HomePageState extends State<HomePage> {
         'alerts', {'lat': pos.latitude, 'lon': pos.longitude, 'type': type});
 
     loadData();
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text("$type saved")));
   }
 
   Future<void> deleteAlert(int id) async {
@@ -161,12 +170,16 @@ class _HomePageState extends State<HomePage> {
 
   void speak(String text) async {
     if (!isMuted) {
+      await tts.setSpeechRate(0.5);
       await tts.speak(text);
     }
   }
 
   void startTracking() {
-    Geolocator.getPositionStream().listen((pos) {
+    Geolocator.getPositionStream(
+      locationSettings:
+          LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 5),
+    ).listen((pos) {
       setState(() {
         currentPosition = pos;
       });
@@ -201,25 +214,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void showAddCategory() {
-    TextEditingController c = TextEditingController();
-
-    showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-              title: Text("Add Category"),
-              content: TextField(controller: c),
-              actions: [
-                ElevatedButton(
-                    onPressed: () {
-                      addCategory(c.text);
-                      Navigator.pop(context);
-                    },
-                    child: Text("Add"))
-              ],
-            ));
-  }
-
   void showAddAlert() {
     showDialog(
         context: context,
@@ -230,9 +224,6 @@ class _HomePageState extends State<HomePage> {
                 children: categories
                     .map((c) => ListTile(
                           title: Text(c.name),
-                          trailing: IconButton(
-                              icon: Icon(Icons.delete),
-                              onPressed: () => deleteCategory(c.id!)),
                           onTap: () {
                             addAlert(c.name);
                             Navigator.pop(context);
@@ -240,11 +231,6 @@ class _HomePageState extends State<HomePage> {
                         ))
                     .toList(),
               ),
-              actions: [
-                ElevatedButton(
-                    onPressed: showAddCategory,
-                    child: Text("Add Category"))
-              ],
             ));
   }
 
@@ -253,32 +239,56 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text("RAA"),
-      ),
-      body: Column(
-        children: [
-          SizedBox(height: 10),
-          Text(
-            currentPosition == null
-                ? "Getting location..."
-                : "Lat: ${currentPosition!.latitude.toStringAsFixed(5)} | Lon: ${currentPosition!.longitude.toStringAsFixed(5)}",
-          ),
-          Text("Total Alerts: ${alerts.length}"),
-          ElevatedButton(onPressed: showAddAlert, child: Text("Add Alert")),
-          Expanded(
-            child: ListView.builder(
-                itemCount: alerts.length,
-                itemBuilder: (_, i) {
-                  var a = alerts[i];
-                  return ListTile(
-                    title: Text("${i + 1}. ${a.type}"),
-                    subtitle: Text("${a.lat}, ${a.lon}"),
-                    trailing: IconButton(
-                        icon: Icon(Icons.delete),
-                        onPressed: () => deleteAlert(a.id!)),
-                  );
-                }),
+        actions: [
+          IconButton(
+            icon: Icon(isMuted ? Icons.volume_off : Icons.volume_up),
+            onPressed: () {
+              setState(() {
+                isMuted = !isMuted;
+              });
+            },
           )
         ],
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(12),
+                child: Text(
+                  currentPosition == null
+                      ? "Getting location..."
+                      : "Lat: ${currentPosition!.latitude.toStringAsFixed(5)}\nLon: ${currentPosition!.longitude.toStringAsFixed(5)}",
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            ),
+            SizedBox(height: 10),
+            Text("Total Alerts: ${alerts.length}",
+                style: TextStyle(fontSize: 18)),
+            SizedBox(height: 10),
+            ElevatedButton(
+                onPressed: showAddAlert, child: Text("Add Alert")),
+            Expanded(
+              child: ListView.builder(
+                  itemCount: alerts.length,
+                  itemBuilder: (_, i) {
+                    var a = alerts[i];
+                    return Card(
+                      child: ListTile(
+                        title: Text("${i + 1}. ${a.type}"),
+                        subtitle: Text("${a.lat}, ${a.lon}"),
+                        trailing: IconButton(
+                            icon: Icon(Icons.delete),
+                            onPressed: () => deleteAlert(a.id!)),
+                      ),
+                    );
+                  }),
+            )
+          ],
+        ),
       ),
     );
   }
