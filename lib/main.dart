@@ -25,6 +25,12 @@ class Category {
   Category({this.id, required this.name});
 }
 
+class AlertState {
+  bool l1 = false;
+  bool l2 = false;
+  bool l3 = false;
+}
+
 class DBHelper {
   static Database? _db;
 
@@ -35,9 +41,9 @@ class DBHelper {
 
     _db = await openDatabase(path, version: 1, onCreate: (db, version) async {
       await db.execute(
-          'CREATE TABLE alerts(id INTEGER PRIMARY KEY, lat REAL, lon REAL, type TEXT)');
+          'CREATE TABLE alerts(id INTEGER PRIMARY KEY AUTOINCREMENT, lat REAL, lon REAL, type TEXT)');
       await db.execute(
-          'CREATE TABLE categories(id INTEGER PRIMARY KEY, name TEXT)');
+          'CREATE TABLE categories(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)');
 
       await db.insert('categories', {'name': 'Speed Breaker'});
       await db.insert('categories', {'name': 'Speed Camera'});
@@ -60,26 +66,15 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-class AlertState {
-  bool l1 = false;
-  bool l2 = false;
-  bool l3 = false;
-}
-
 class _HomePageState extends State<HomePage> {
   List<Alert> alerts = [];
   List<Category> categories = [];
   Map<int, AlertState> alertStates = {};
 
   FlutterTts tts = FlutterTts();
-
   Position? currentPosition;
 
-  double d1 = 60;
-  double d2 = 30;
-  double d3 = 10;
-  double resetDistance = 25;
-
+  double d1 = 60, d2 = 30, d3 = 10, resetDistance = 25;
   bool isMuted = false;
 
   @override
@@ -114,7 +109,9 @@ class _HomePageState extends State<HomePage> {
           .toList();
 
       for (var a in alerts) {
-        alertStates[a.id!] = AlertState();
+        if (a.id != null) {
+          alertStates[a.id!] = AlertState();
+        }
       }
     });
   }
@@ -164,23 +161,21 @@ class _HomePageState extends State<HomePage> {
 
   void speak(String text) async {
     if (!isMuted) {
-      await tts.setSpeechRate(0.5);
       await tts.speak(text);
     }
   }
 
   void startTracking() {
-    Geolocator.getPositionStream(
-      locationSettings:
-          LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 5),
-    ).listen((pos) {
+    Geolocator.getPositionStream().listen((pos) {
       setState(() {
         currentPosition = pos;
       });
 
       for (var a in alerts) {
+        if (a.id == null) continue;
+
         double d = distance(pos.latitude, pos.longitude, a.lat, a.lon);
-        var state = alertStates[a.id]!;
+        var state = alertStates[a.id!] ?? AlertState();
 
         if (d < d1 && !state.l1) {
           speak("${a.type} ahead");
@@ -197,9 +192,10 @@ class _HomePageState extends State<HomePage> {
           state.l3 = true;
         }
 
-        // RESET AFTER PASSING
         if (d > resetDistance) {
-          alertStates[a.id] = AlertState();
+          alertStates[a.id!] = AlertState();
+        } else {
+          alertStates[a.id!] = state;
         }
       }
     });
@@ -257,11 +253,6 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text("RAA"),
-        actions: [
-          IconButton(
-              icon: Icon(isMuted ? Icons.volume_off : Icons.volume_up),
-              onPressed: () => setState(() => isMuted = !isMuted))
-        ],
       ),
       body: Column(
         children: [
@@ -270,13 +261,9 @@ class _HomePageState extends State<HomePage> {
             currentPosition == null
                 ? "Getting location..."
                 : "Lat: ${currentPosition!.latitude.toStringAsFixed(5)} | Lon: ${currentPosition!.longitude.toStringAsFixed(5)}",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 10),
-          Text("Total Alerts: ${alerts.length}",
-              style: TextStyle(fontSize: 18)),
-          ElevatedButton(
-              onPressed: showAddAlert, child: Text("Add Alert")),
+          Text("Total Alerts: ${alerts.length}"),
+          ElevatedButton(onPressed: showAddAlert, child: Text("Add Alert")),
           Expanded(
             child: ListView.builder(
                 itemCount: alerts.length,
