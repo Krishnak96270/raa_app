@@ -1,5 +1,5 @@
 name: raa_app
-description: Road Alert Assistant
+description: Road Alert Assistant - Smart Driving System
 
 publish_to: 'none'
 
@@ -14,15 +14,18 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # GPS
+  # 📍 GPS
   geolocator: ^10.1.0
 
-  # Voice alerts
+  # 🔊 Voice Alerts
   flutter_tts: ^3.8.0
 
-  # Database
+  # 💾 Local Database
   sqflite: ^2.3.0
   path: ^1.9.0
+
+  # 📊 Motion Detection (Accelerometer)
+  sensors_plus: ^4.0.2
 
 dev_dependencies:
   flutter_test:
