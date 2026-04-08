@@ -16,10 +16,6 @@ class Alert {
   String type;
 
   Alert({this.id, required this.lat, required this.lon, required this.type});
-
-  Map<String, dynamic> toMap() {
-    return {'id': id, 'lat': lat, 'lon': lon, 'type': type};
-  }
 }
 
 class Category {
@@ -27,10 +23,6 @@ class Category {
   String name;
 
   Category({this.id, required this.name});
-
-  Map<String, dynamic> toMap() {
-    return {'id': id, 'name': name};
-  }
 }
 
 class DBHelper {
@@ -68,11 +60,26 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
+class AlertState {
+  bool l1 = false;
+  bool l2 = false;
+  bool l3 = false;
+}
+
 class _HomePageState extends State<HomePage> {
   List<Alert> alerts = [];
   List<Category> categories = [];
+  Map<int, AlertState> alertStates = {};
+
   FlutterTts tts = FlutterTts();
-  double alertDistance = 80;
+
+  Position? currentPosition;
+
+  double d1 = 60;
+  double d2 = 30;
+  double d3 = 10;
+  double resetDistance = 25;
+
   bool isMuted = false;
 
   @override
@@ -83,12 +90,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> initLocation() async {
-    LocationPermission permission = await Geolocator.checkPermission();
-
-    if (permission == LocationPermission.denied) {
-      await Geolocator.requestPermission();
-    }
-
+    await Geolocator.requestPermission();
     startTracking();
   }
 
@@ -110,7 +112,27 @@ class _HomePageState extends State<HomePage> {
       categories = catData
           .map((e) => Category(id: e['id'] as int, name: e['name'] as String))
           .toList();
+
+      for (var a in alerts) {
+        alertStates[a.id!] = AlertState();
+      }
     });
+  }
+
+  Future<void> addAlert(String type) async {
+    Position pos = await Geolocator.getCurrentPosition();
+
+    final db = await DBHelper.getDB();
+    await db.insert(
+        'alerts', {'lat': pos.latitude, 'lon': pos.longitude, 'type': type});
+
+    loadData();
+  }
+
+  Future<void> deleteAlert(int id) async {
+    final db = await DBHelper.getDB();
+    await db.delete('alerts', where: 'id=?', whereArgs: [id]);
+    loadData();
   }
 
   Future<void> addCategory(String name) async {
@@ -122,34 +144,6 @@ class _HomePageState extends State<HomePage> {
   Future<void> deleteCategory(int id) async {
     final db = await DBHelper.getDB();
     await db.delete('categories', where: 'id=?', whereArgs: [id]);
-    loadData();
-  }
-
-  Future<void> addAlert(String type) async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-
-    if (!serviceEnabled) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Enable GPS")));
-      return;
-    }
-
-    Position pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-
-    final db = await DBHelper.getDB();
-    await db.insert('alerts',
-        {'lat': pos.latitude, 'lon': pos.longitude, 'type': type});
-
-    loadData();
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text("$type saved")));
-  }
-
-  Future<void> deleteAlert(int id) async {
-    final db = await DBHelper.getDB();
-    await db.delete('alerts', where: 'id=?', whereArgs: [id]);
     loadData();
   }
 
@@ -168,13 +162,44 @@ class _HomePageState extends State<HomePage> {
     return R * c;
   }
 
+  void speak(String text) async {
+    if (!isMuted) {
+      await tts.setSpeechRate(0.5);
+      await tts.speak(text);
+    }
+  }
+
   void startTracking() {
-    Geolocator.getPositionStream().listen((pos) {
+    Geolocator.getPositionStream(
+      locationSettings:
+          LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 5),
+    ).listen((pos) {
+      setState(() {
+        currentPosition = pos;
+      });
+
       for (var a in alerts) {
         double d = distance(pos.latitude, pos.longitude, a.lat, a.lon);
+        var state = alertStates[a.id]!;
 
-        if (d < alertDistance && !isMuted) {
-          tts.speak("${a.type} ahead");
+        if (d < d1 && !state.l1) {
+          speak("${a.type} ahead");
+          state.l1 = true;
+        }
+
+        if (d < d2 && !state.l2) {
+          speak("Approaching ${a.type}");
+          state.l2 = true;
+        }
+
+        if (d < d3 && !state.l3) {
+          speak("${a.type} now");
+          state.l3 = true;
+        }
+
+        // RESET AFTER PASSING
+        if (d > resetDistance) {
+          alertStates[a.id] = AlertState();
         }
       }
     });
@@ -222,7 +247,7 @@ class _HomePageState extends State<HomePage> {
               actions: [
                 ElevatedButton(
                     onPressed: showAddCategory,
-                    child: Text("Add New Category"))
+                    child: Text("Add Category"))
               ],
             ));
   }
@@ -240,6 +265,13 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
+          SizedBox(height: 10),
+          Text(
+            currentPosition == null
+                ? "Getting location..."
+                : "Lat: ${currentPosition!.latitude.toStringAsFixed(5)} | Lon: ${currentPosition!.longitude.toStringAsFixed(5)}",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           SizedBox(height: 10),
           Text("Total Alerts: ${alerts.length}",
               style: TextStyle(fontSize: 18)),
