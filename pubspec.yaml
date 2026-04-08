@@ -1,5 +1,5 @@
 name: raa_app
-description: Road Alert Assistant - Smart Driving System
+description: Road Alert Assistant - Smart AI Driving System
 
 publish_to: 'none'
 
@@ -14,7 +14,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # 📍 GPS
+  # 📍 GPS Location
   geolocator: ^10.1.0
 
   # 🔊 Voice Alerts
@@ -26,6 +26,9 @@ dependencies:
 
   # 📊 Motion Detection (Accelerometer)
   sensors_plus: ^4.0.2
+
+  # 📁 File storage (Export / Backup)
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
