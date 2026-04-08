@@ -4,7 +4,10 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'dart:math';
+import 'dart:convert';
+import 'dart:io';
 
 void main() {
   runApp(MyApp());
@@ -20,9 +23,7 @@ class Alert {
 }
 
 class AlertState {
-  bool l1 = false;
-  bool l2 = false;
-  bool l3 = false;
+  bool l1 = false, l2 = false, l3 = false;
 }
 
 class DBHelper {
@@ -33,7 +34,7 @@ class DBHelper {
 
     String path = p.join(await getDatabasesPath(), 'raa.db');
 
-    _db = await openDatabase(path, version: 1, onCreate: (db, version) async {
+    _db = await openDatabase(path, version: 1, onCreate: (db, v) async {
       await db.execute(
           'CREATE TABLE alerts(id INTEGER PRIMARY KEY AUTOINCREMENT, lat REAL, lon REAL, type TEXT)');
     });
@@ -56,30 +57,29 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<Alert> alerts = [];
-  Map<int, AlertState> alertStates = {};
+  Map<int, AlertState> states = {};
 
   FlutterTts tts = FlutterTts();
   Position? currentPosition;
 
-  double d1 = 60, d2 = 30, d3 = 10, resetDistance = 25;
-
   bool isMuted = true;
 
-  // Motion detection
-  double threshold = 12.0;
+  double d1 = 60, d2 = 30, d3 = 10, resetDistance = 25;
+
+  double threshold = 12;
   DateTime lastDetection = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    initLocation();
-    loadData();
-    startMotionDetection();
+    init();
   }
 
-  Future<void> initLocation() async {
+  Future<void> init() async {
     await Geolocator.requestPermission();
-    startTracking();
+    loadData();
+    track();
+    detectMotion();
   }
 
   Future<void> loadData() async {
@@ -96,90 +96,110 @@ class _HomePageState extends State<HomePage> {
           .toList();
 
       for (var a in alerts) {
-        alertStates[a.id!] = AlertState();
+        states[a.id!] = AlertState();
       }
     });
   }
 
-  Future<void> saveAlert(double lat, double lon) async {
+  double distance(a, b, c, d) {
+    const R = 6371000;
+    double dLat = (c - a) * pi / 180;
+    double dLon = (d - b) * pi / 180;
+    double x = sin(dLat / 2) * sin(dLat / 2) +
+        cos(a * pi / 180) *
+            cos(c * pi / 180) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+    return R * 2 * atan2(sqrt(x), sqrt(1 - x));
+  }
+
+  Future<void> saveAlert(double lat, double lon, String type) async {
     final db = await DBHelper.getDB();
-    await db.insert('alerts',
-        {'lat': lat, 'lon': lon, 'type': 'Speed Breaker'});
+    final data = await db.query('alerts');
+
+    for (var e in data) {
+      if (distance(lat, lon, e['lat'], e['lon']) < 15) return;
+    }
+
+    await db.insert('alerts', {'lat': lat, 'lon': lon, 'type': type});
     loadData();
   }
 
-  void startMotionDetection() {
-    accelerometerEvents.listen((event) async {
-      double z = event.z;
-
-      if (z > threshold &&
+  void detectMotion() {
+    accelerometerEvents.listen((e) async {
+      if (e.z > threshold &&
           DateTime.now().difference(lastDetection).inSeconds > 5) {
         lastDetection = DateTime.now();
 
         if (currentPosition != null) {
+          String type = e.z > 15 ? "Speed Breaker" : "Pothole";
           await saveAlert(
-              currentPosition!.latitude, currentPosition!.longitude);
+              currentPosition!.latitude, currentPosition!.longitude, type);
 
           ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Bump detected & saved")));
+              SnackBar(content: Text("$type detected & saved")));
         }
       }
     });
   }
 
-  double distance(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
-    double dLat = (lat2 - lat1) * pi / 180;
-    double dLon = (lon2 - lon1) * pi / 180;
-
-    double a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(lat1 * pi / 180) *
-            cos(lat2 * pi / 180) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
-
-    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    return R * c;
-  }
-
-  void speak(String text) async {
-    if (!isMuted) {
-      await tts.speak(text);
-    }
-  }
-
-  void startTracking() {
+  void track() {
     Geolocator.getPositionStream().listen((pos) {
-      setState(() {
-        currentPosition = pos;
-      });
+      setState(() => currentPosition = pos);
 
       for (var a in alerts) {
         double d = distance(pos.latitude, pos.longitude, a.lat, a.lon);
-        var state = alertStates[a.id!] ?? AlertState();
+        var s = states[a.id!] ?? AlertState();
 
-        if (d < d1 && !state.l1) {
+        if (d < d1 && !s.l1) {
           speak("${a.type} ahead");
-          state.l1 = true;
+          s.l1 = true;
         }
-
-        if (d < d2 && !state.l2) {
+        if (d < d2 && !s.l2) {
           speak("Approaching ${a.type}");
-          state.l2 = true;
+          s.l2 = true;
         }
-
-        if (d < d3 && !state.l3) {
+        if (d < d3 && !s.l3) {
           speak("${a.type} now");
-          state.l3 = true;
+          s.l3 = true;
         }
 
         if (d > resetDistance) {
-          alertStates[a.id!] = AlertState();
+          states[a.id!] = AlertState();
         } else {
-          alertStates[a.id!] = state;
+          states[a.id!] = s;
         }
       }
     });
+  }
+
+  void speak(String text) async {
+    if (!isMuted) await tts.speak(text);
+  }
+
+  Future<void> deleteAlert(int id) async {
+    final db = await DBHelper.getDB();
+    await db.delete('alerts', where: 'id=?', whereArgs: [id]);
+    loadData();
+  }
+
+  Future<void> exportData() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File("${dir.path}/raa_backup.json");
+
+    await file.writeAsString(jsonEncode(alerts
+        .map((e) => {'lat': e.lat, 'lon': e.lon, 'type': e.type})
+        .toList()));
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text("Exported")));
+  }
+
+  void manualAdd() async {
+    if (currentPosition != null) {
+      await saveAlert(currentPosition!.latitude,
+          currentPosition!.longitude, "Manual");
+    }
   }
 
   @override
@@ -189,24 +209,42 @@ class _HomePageState extends State<HomePage> {
         title: Text("RAA"),
         actions: [
           IconButton(
-            icon: Icon(isMuted ? Icons.volume_off : Icons.volume_up),
-            onPressed: () {
-              setState(() {
-                isMuted = !isMuted;
-              });
-            },
-          )
+              icon: Icon(isMuted ? Icons.volume_off : Icons.volume_up),
+              onPressed: () => setState(() => isMuted = !isMuted)),
+          IconButton(icon: Icon(Icons.download), onPressed: exportData),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: manualAdd,
+        child: Icon(Icons.add),
       ),
       body: Column(
         children: [
           SizedBox(height: 10),
-          Text(
-            currentPosition == null
-                ? "Getting location..."
-                : "Lat: ${currentPosition!.latitude.toStringAsFixed(5)} | Lon: ${currentPosition!.longitude.toStringAsFixed(5)}",
-          ),
+          Text(currentPosition == null
+              ? "Getting location..."
+              : "Lat: ${currentPosition!.latitude.toStringAsFixed(5)} | Lon: ${currentPosition!.longitude.toStringAsFixed(5)}"),
           Text("Total Alerts: ${alerts.length}"),
+          Expanded(
+            child: ListView.builder(
+                itemCount: alerts.length,
+                itemBuilder: (_, i) {
+                  var a = alerts[i];
+                  return Card(
+                    child: ListTile(
+                      title: Text("${i + 1}. ${a.type}"),
+                      subtitle: Text("${a.lat}, ${a.lon}"),
+                      trailing: PopupMenuButton(
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                              child: Text("Delete"),
+                              onTap: () => deleteAlert(a.id!))
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+          )
         ],
       ),
     );
