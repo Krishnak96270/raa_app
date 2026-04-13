@@ -1,9 +1,5 @@
-name: raa_app
-description: Road Alert Assistant - Smart AI Driving System
-
-publish_to: 'none'
-
-version: 1.0.0+1
+name: speed_breaker_alert
+description: Offline speed breaker alert app
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -12,29 +8,15 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
-
-  # 📍 GPS Location
   geolocator: ^10.1.0
-
-  # 🔊 Voice Alerts
-  flutter_tts: ^3.8.0
-
-  # 💾 Local Database
-  sqflite: ^2.3.0
-  path: ^1.9.0
-
-  # 📊 Motion Detection (Accelerometer)
   sensors_plus: ^4.0.2
-
-  # 📁 File storage (Export / Backup)
+  flutter_tts: ^3.8.5
+  sqflite: ^2.3.0
   path_provider: ^2.1.2
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-
-  flutter_lints: ^3.0.0
+  permission_handler: ^11.0.1
+  flutter_background_service: ^5.0.5
+  wakelock_plus: ^1.1.4
+  csv: ^5.0.2
 
 flutter:
   uses-material-design: true
